@@ -39,19 +39,19 @@ type streamState struct {
 //
 
 // the new stream state
-type State struct {
+type state struct {
 	block uint32 // the number of blocks 2^32 block or 32/64K == 140 PB / 281 PB enough i guess..
 	seed  []byte
 }
 
-func newState(seed []byte) *State {
-	return &State{
+func newState(seed []byte) *state {
+	return &state{
 		block: 0,
 		seed:  seed,
 	}
 }
 
-func (s *State) init() bool {
+func (s *state) init() bool {
 	if s.block == 0 {
 		return true
 	}
@@ -70,7 +70,7 @@ func (s *stateSTREAM) seed() []byte {
 // block : 4 bytes
 // tag : 1 byte
 // if last is true then the tag is 0x01 and mark the end of the stream
-func (s *State) next(last bool) (nonce []byte) {
+func (s *state) next(last bool) (nonce []byte) {
 	//var nonce []byte
 
 	// tag

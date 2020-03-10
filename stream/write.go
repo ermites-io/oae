@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"crypto/rand"
-	"fmt"
 	"io"
-	"os"
 )
 
 //
@@ -27,7 +25,7 @@ func NewWriter(w io.Writer, a cipher.AEAD, blockSize int) (*STREAM, error) {
 	if _, err := io.ReadFull(rand.Reader, seed); err != nil {
 		return nil, err
 	}
-	fmt.Fprintf(os.Stderr, "seedsize: %d\n", len(seed))
+	//fmt.Fprintf(os.Stderr, "seedsize: %d\n", len(seed))
 
 	state := newState(seed)
 

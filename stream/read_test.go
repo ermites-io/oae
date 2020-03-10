@@ -56,6 +56,41 @@ var (
 			1,   // read expected return
 			nil, // read expected error
 		},
+		{
+			16,  // blocksize
+			16,  // writesize
+			16,  // readsize
+			16,  // read expected return
+			nil, // read expected error
+		},
+		{
+			16,  // blocksize
+			100, // writesize
+			100, // readsize
+			100, // read expected return
+			nil, // read expected error
+		},
+		{
+			16,  // blocksize
+			100, // writesize
+			64,  // readsize
+			64,  // read expected return
+			nil, // read expected error
+		},
+		{
+			16,  // blocksize
+			2,   // writesize
+			64,  // readsize
+			2,   // read expected return
+			nil, // read expected error
+		},
+		{
+			16,  // blocksize
+			2,   // writesize
+			20,  // readsize
+			2,   // read expected return
+			nil, // read expected error
+		},
 	}
 )
 
@@ -96,7 +131,7 @@ func streambuffer(datasize, blocksize int) (dh []byte, iobuffer *bytes.Buffer, e
 
 }
 
-func TestRead(t *testing.T) {
+func TestSingleRead(t *testing.T) {
 	// prepare the aead...
 	aead, err := xcha.NewX(key)
 	if err != nil {
@@ -128,4 +163,7 @@ func TestRead(t *testing.T) {
 			t.Fatalf("[%d] read data wh: %x VS rh: %x\n", i, h, readhash[:])
 		}
 	}
+}
+
+func TestMultipleReadUntilEmpty(t *testing.T) {
 }

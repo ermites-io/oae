@@ -30,7 +30,7 @@ const (
 type STREAM struct {
 	aead cipher.AEAD // AEAD
 
-	state *State // the state of the stream
+	state *state // the state of the stream
 
 	w io.Writer // writer
 	r io.Reader // reader
