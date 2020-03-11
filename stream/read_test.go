@@ -92,16 +92,59 @@ var (
 			nil, // read expected error
 		},
 	}
+
+	readMultipleTestVector = []struct {
+		blockSize       int
+		writeSize       int
+		readSegmentSize int
+		readTotal       int   // expected total read
+		readErr         error // last read error
+		readExtraSize   int   // extra read error expected
+		readExtraRead   int   // how much SHOULD be read/returned
+		readExtraErr    error // extra read error expected
+	}{
+		{
+			16,  // blocksize
+			100, // writesize
+			2,   // readsize
+			64,  // read total expected
+			nil, // read expected error
+			2,
+			2,
+			nil, //
+		},
+		{
+			16,  // blocksize
+			100, // writesize
+			2,   // readsize
+			64,  // read total expected
+			nil, // read expected error
+			64,
+			36,
+			nil, //
+		},
+		{
+			16,  // blocksize
+			34,  // writesize
+			2,   // readsize
+			34,  // read total expected
+			nil, // read expected error
+			2,
+			0,
+			io.EOF,
+		},
+	}
 )
 
 // return the hash of the data, the buffer with the encrypted data
-func streambuffer(datasize, blocksize int) (dh []byte, iobuffer *bytes.Buffer, err error) {
+func streambuffer(t *testing.T, datasize, blocksize int) (dh []byte, iobuffer *bytes.Buffer, err error) {
 	data := make([]byte, datasize)
 
 	_, err = io.ReadFull(rand.Reader, data)
 	if err != nil {
 		return
 	}
+	t.Logf("w: %x\n", data)
 
 	// compute hash of the data
 	datahash := sha256.Sum256(data)
@@ -139,7 +182,7 @@ func TestSingleRead(t *testing.T) {
 	}
 
 	for i, v := range readTestVector {
-		h, iobuf, err := streambuffer(v.writeSize, v.blockSize)
+		h, iobuf, err := streambuffer(t, v.writeSize, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] buffer create error: %v\n", i, err)
 		}
@@ -165,5 +208,75 @@ func TestSingleRead(t *testing.T) {
 	}
 }
 
-func TestMultipleReadUntilEmpty(t *testing.T) {
+func TestMultipleRead(t *testing.T) {
+	var err error
+	var total, rc int
+	var out []byte
+	// prepare the aead...
+	aead, err := xcha.NewX(key)
+	if err != nil {
+		panic(err)
+	}
+
+	for i, v := range readMultipleTestVector {
+		t.Logf("testing vector: %d\n", i)
+		h, iobuf, err := streambuffer(t, v.writeSize, v.blockSize)
+		if err != nil {
+			t.Fatalf("[%d] buffer create error: %v\n", i, err)
+		}
+
+		//t.Logf("w: %x\n", iobuf.Bytes())
+
+		srd, err := NewReader(iobuf, aead, v.blockSize)
+		if err != nil {
+			t.Fatalf("[%d] reader create error: %v\n", i, err)
+		}
+
+		// let's divide the read size in
+		output := bytes.NewBuffer(out)
+
+		total = 0
+		for total < v.readTotal {
+
+			b1 := make([]byte, v.readSegmentSize)
+			rc, err = srd.Read(b1)
+			if rc != v.readSegmentSize {
+				t.Fatalf("[%d] read size error n: %d vs expected: %d\n", i, rc, v.readSegmentSize)
+			}
+			if err != nil {
+				t.Fatalf("[%d] read size error: %v vs expected: %v\n", i, err, v.readErr)
+			}
+
+			output.Write(b1[:rc])
+			total += rc
+		}
+
+		t.Logf("total: %d\n", total)
+
+		if v.readErr != err {
+			t.Fatalf("[%d] last read error: %v vs expected: %v\n", i, err, v.readErr)
+		}
+
+		if v.readTotal != total {
+			t.Fatalf("[%d] total read error: %d vs expected: %d\n", i, total, v.readTotal)
+		}
+
+		t.Logf("r: %x\n", output.Bytes())
+		// compare output hash now..
+		readhash := sha256.Sum256(output.Bytes())
+		if v.readTotal == v.writeSize && bytes.Compare(h, readhash[:]) != 0 {
+			t.Fatalf("[%d] read data wh: %x VS rh: %x\n", i, h, readhash[:])
+		}
+
+		// EXTRA READ
+		b1 := make([]byte, v.readExtraSize)
+		rc, err = srd.Read(b1)
+		if rc != v.readExtraRead {
+			t.Fatalf("[%d] extra read size: %d VS expected: %d\n", i, rc, v.readExtraRead)
+		}
+		if err != v.readExtraErr {
+			t.Fatalf("[%d] extra read err: %v VS expected: %v\n", i, err, v.readExtraErr)
+		}
+	}
+
 }

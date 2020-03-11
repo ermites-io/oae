@@ -101,6 +101,14 @@ goout:
 				break goout
 			}
 			n0 := copy(b, pt)
+			if n0 < len(pt) {
+				// buffer the remaining that has already been decrypted..
+				cn, err := s.buf.Write(pt[n0:])
+				fmt.Fprintf(os.Stderr, "BUFFER CN: %d\n", cn)
+				if err != nil {
+					panic(err) // TODO better handling..
+				}
+			}
 			fmt.Fprintf(os.Stderr, "len(pt):%d VS n0: %d\n", len(pt), n0)
 			b = b[n0:]
 			n += n0
@@ -133,6 +141,5 @@ goout:
 			panic(rerr)
 		}
 	}
-	//fmt.Fprintf(os.Stderr, "RET Read() n: %d err: %v\n", n, err)
 	return
 }
