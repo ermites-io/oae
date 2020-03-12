@@ -133,6 +133,16 @@ var (
 			0,
 			io.EOF,
 		},
+		{
+			16,  // blocksize
+			36,  // writesize
+			2,   // readSegmentsize
+			12,  // read total expected
+			nil, // read expected error
+			8,
+			8,
+			nil,
+		},
 	}
 )
 
@@ -144,7 +154,7 @@ func streambuffer(t *testing.T, datasize, blocksize int) (dh []byte, iobuffer *b
 	if err != nil {
 		return
 	}
-	t.Logf("w: %x\n", data)
+	//t.Logf("w: %x\n", data)
 
 	// compute hash of the data
 	datahash := sha256.Sum256(data)
@@ -219,7 +229,7 @@ func TestMultipleRead(t *testing.T) {
 	}
 
 	for i, v := range readMultipleTestVector {
-		t.Logf("testing vector: %d\n", i)
+		//t.Logf("testing vector: %d\n", i)
 		h, iobuf, err := streambuffer(t, v.writeSize, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] buffer create error: %v\n", i, err)
@@ -251,7 +261,7 @@ func TestMultipleRead(t *testing.T) {
 			total += rc
 		}
 
-		t.Logf("total: %d\n", total)
+		//t.Logf("total: %d\n", total)
 
 		if v.readErr != err {
 			t.Fatalf("[%d] last read error: %v vs expected: %v\n", i, err, v.readErr)
@@ -261,7 +271,7 @@ func TestMultipleRead(t *testing.T) {
 			t.Fatalf("[%d] total read error: %d vs expected: %d\n", i, total, v.readTotal)
 		}
 
-		t.Logf("r: %x\n", output.Bytes())
+		//t.Logf("r: %x\n", output.Bytes())
 		// compare output hash now..
 		readhash := sha256.Sum256(output.Bytes())
 		if v.readTotal == v.writeSize && bytes.Compare(h, readhash[:]) != 0 {

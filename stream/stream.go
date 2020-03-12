@@ -6,15 +6,6 @@ import (
 	"io"
 )
 
-const (
-	KeyLen  = 32
-	SaltLen = 32
-	SeedLen = 32
-)
-
-// an io.Reader implements Read()
-// an io.Writer implements Write()
-
 //
 //
 //

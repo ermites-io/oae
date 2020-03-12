@@ -4,14 +4,6 @@ import (
 	"encoding/binary"
 )
 
-/*
-type streamState struct {
-	blockCurrent uint64 // current block number
-	nonceCurrent []byte // current nonce value, used to compute the next value
-	salt         []byte // forced to keep because we need to write it the first time.
-}
-*/
-
 // stream state will be quite different
 // it will start like this:
 // newState(salt, seed, noncesize)
@@ -51,18 +43,16 @@ func newState(seed []byte) *state {
 	}
 }
 
+func (s *state) set(block int) {
+	s.block = uint32(block)
+}
+
 func (s *state) init() bool {
 	if s.block == 0 {
 		return true
 	}
 	return false
 }
-
-/*
-func (s *stateSTREAM) seed() []byte {
-	return s.seed
-}
-*/
 
 // compute the  next nonce
 // [ seed ] [ block ] [ tag ]
