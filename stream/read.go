@@ -113,6 +113,7 @@ func (s *STREAM) Read(p []byte) (n int, err error) {
 			//fmt.Printf("read header %d (%v)\n", n, err)
 			return
 		}
+		//fmt.Fprintf(os.Stderr, "read seed: %x\n", seed)
 		s.state = newState(seed)
 	}
 
@@ -135,17 +136,17 @@ func (s *STREAM) Read(p []byte) (n int, err error) {
 		n0 := copy(p, tmpbuf)
 		//fmt.Fprintf(os.Stderr, "BUFFER FILLED COPIED: %d / %d\n", n0, len(tmpbuf))
 		s.buf.Reset()
-		_, err := s.buf.Write(tmpbuf[n0:])
+		_, err = s.buf.Write(tmpbuf[n0:])
 		if err != nil {
-			panic(err)
+			//panic(err)
+			return
 		}
 		n += n0
 	}
 
 	// if the dest buffer is larger than our internal buffer,
 	// let's just loop and fill as much.
-goout:
-	//for b := p; n < len(p); {
+forloop:
 	for b := p[n:]; n < len(p); {
 		var nonce []byte
 
@@ -154,47 +155,48 @@ goout:
 		switch rerr {
 		case io.EOF:
 			err = io.EOF
-			break goout
+			break forloop
 		case io.ErrUnexpectedEOF:
 			// it is the last block (we use ReadFull())
 			nonce = s.state.next(true)
-			pt, err := s.aead.Open(nil, nonce, buf[:n1], nil)
-			if err != nil {
+			pt, cerr := s.aead.Open(nil, nonce, buf[:n1], nil)
+			if cerr != nil {
 				// TRUNCATED BLOCK so we are not returning EOF or nil
 				// it's TRUNCATED it's supposed to be the last block or we miss data.
-				err = rerr
-				break goout
+				err = cerr
+				break forloop
 			}
 			n0 := copy(b, pt)
 			if n0 < len(pt) {
 				// buffer the remaining that has already been decrypted..
 				_, werr := s.buf.Write(pt[n0:])
 				//fmt.Fprintf(os.Stderr, "BUFFER CN: %d\n", cn)
-				if err != nil {
+				if werr != nil {
 					// we should not PANIC, but let's return that error.
 					//panic(err) // TODO better handling..
 					err = werr
-					break goout
+					break forloop
 				}
 			}
 			//fmt.Fprintf(os.Stderr, "unexEOF len(pt):%d VS n0: %d\n", len(pt), n0)
 			b = b[n0:]
 			n += n0
-			break goout
+			break forloop
 		case nil:
 			nonce = s.state.next(false)
-			pt, err := s.aead.Open(nil, nonce, buf[:n1], nil)
-			if err != nil {
+			pt, cerr := s.aead.Open(nil, nonce, buf[:n1], nil)
+			if cerr != nil {
 				// may be it's the last block.
 				nonce[len(nonce)-1] = 0x01
-				pt, err = s.aead.Open(nil, nonce, buf[:n1], nil)
-				if err != nil {
+				pt, cerr = s.aead.Open(nil, nonce, buf[:n1], nil)
+				if cerr != nil {
 					// the guess is it's the last block
 					// since we're in % blocksize
 					// if not and we should just return an ErrUnexpectedEOF
 					//panic(err)
-					err = io.ErrUnexpectedEOF
-					break goout
+					//err = io.ErrUnexpectedEOF
+					err = cerr
+					break forloop
 				}
 			}
 
@@ -206,7 +208,7 @@ goout:
 				if werr != nil {
 					//panic(err) // TODO better handling..
 					err = werr
-					break goout
+					break forloop
 				}
 			}
 			//fmt.Fprintf(os.Stderr, "NIL len(pt):%d VS n0: %d\n", len(pt), n0)

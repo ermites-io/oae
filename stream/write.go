@@ -25,7 +25,7 @@ func NewWriter(w io.Writer, a cipher.AEAD, blockSize int) (*STREAM, error) {
 	if _, err := io.ReadFull(rand.Reader, seed); err != nil {
 		return nil, err
 	}
-	//fmt.Fprintf(os.Stderr, "seedsize: %d\n", len(seed))
+	//fmt.Fprintf(os.Stderr, "seed: %x\n", seed)
 
 	state := newState(seed)
 
@@ -83,14 +83,19 @@ func (s *STREAM) _ReadFrom(r io.Reader) (wn int64, err error) {
 func (s *STREAM) Write(b []byte) (n int, err error) {
 	bufsize := s.buf.Cap()
 	unread := len(b)
+	//fmt.Fprintf(os.Stderr, "Write(%d) bufsize: %d\n", len(b), bufsize)
 
 	// this is where the seed is transmitted
 	// in the beginning of the block
-	if s.state.init() {
-		err := s.writeSeedBlock()
-		if err != nil {
-			return 0, err
+	if !s.state.started() {
+		//if s.state.Init() {
+		//fmt.Fprintf(os.Stderr, "started!\n")
+		werr := s.writeSeedBlock()
+		if werr != nil {
+			err = werr
+			return
 		}
+		s.state.start()
 	}
 
 	for wn, avail := 0, bufsize-s.buffered; unread > 0; avail = bufsize - s.buffered {
@@ -100,9 +105,10 @@ func (s *STREAM) Write(b []byte) (n int, err error) {
 			// flush: Seal & Write.
 			nonce := s.state.next(false)
 			ct := s.aead.Seal(nil, nonce, s.buf.Bytes(), nil)
-			_, err := s.w.Write(ct)
-			if err != nil {
-				return 0, err
+			_, werr := s.w.Write(ct)
+			if werr != nil {
+				err = werr
+				return
 			}
 			s.buf.Reset()
 			s.buffered = 0

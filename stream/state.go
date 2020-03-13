@@ -32,12 +32,14 @@ import (
 
 // the new stream state
 type state struct {
+	init  bool
 	block uint32 // the number of blocks 2^32 block or 32/64K == 140 PB / 281 PB enough i guess..
 	seed  []byte
 }
 
 func newState(seed []byte) *state {
 	return &state{
+		init:  false,
 		block: 0,
 		seed:  seed,
 	}
@@ -47,7 +49,23 @@ func (s *state) set(block int) {
 	s.block = uint32(block)
 }
 
-func (s *state) init() bool {
+// better naming later.
+//func (s *state) init() bool {
+func (s *state) start() {
+	/*
+		if s.block == 0 {
+			return true
+		}
+		return false
+	*/
+	s.init = true
+}
+
+func (s *state) started() bool {
+	return s.init
+}
+
+func (s *state) Init() bool {
 	if s.block == 0 {
 		return true
 	}

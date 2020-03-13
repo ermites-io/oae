@@ -91,6 +91,13 @@ var (
 			2,   // read expected return
 			nil, // read expected error
 		},
+		{
+			32 * 1024,   // blocksize
+			1024 * 1024, // writesize
+			32 * 1024,   // readsize
+			32 * 1024,   // read expected return
+			nil,         // read expected error
+		},
 	}
 
 	readMultipleTestVector = []struct {
@@ -144,7 +151,78 @@ var (
 			nil,
 		},
 	}
+
+	readStreamTestVector = []struct {
+		blockSize int
+		dataSize  int
+		readRc    int
+		readErr   error
+	}{
+		{
+			32 * 1024,
+			1024 * 1024,
+			1024 * 1024,
+			nil,
+		},
+		{
+			128 * 1024,
+			16 * 1024 * 1024,
+			16 * 1024 * 1024,
+			nil,
+		},
+	}
 )
+
+// stolen from io.Copy except we do NOT want to  wrap/use WriteTo() or ReadFrom()
+// we want to force the use of blocks for testing
+func copyBuffer(dst io.Writer, src io.Reader, buf []byte) (written int64, err error) {
+	// If the reader has a WriteTo method, use it to do the copy.
+	// Avoids an allocation and a copy.
+	/*
+		if wt, ok := src.(WriterTo); ok {
+			return wt.WriteTo(dst)
+		}
+		// Similarly, if the writer has a ReadFrom method, use it to do the copy.
+		if rt, ok := dst.(ReaderFrom); ok {
+			return rt.ReadFrom(src)
+		}
+	*/
+	if buf == nil {
+		size := 32 * 1024
+		if l, ok := src.(*io.LimitedReader); ok && int64(size) > l.N {
+			if l.N < 1 {
+				size = 1
+			} else {
+				size = int(l.N)
+			}
+		}
+		buf = make([]byte, size)
+	}
+	for {
+		nr, er := src.Read(buf)
+		if nr > 0 {
+			nw, ew := dst.Write(buf[0:nr])
+			if nw > 0 {
+				written += int64(nw)
+			}
+			if ew != nil {
+				err = ew
+				break
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				err = er
+			}
+			break
+		}
+	}
+	return written, err
+}
 
 // return the hash of the data, the buffer with the encrypted data
 func streambuffer(t *testing.T, datasize, blocksize int) (dh []byte, iobuffer *bytes.Buffer, err error) {
@@ -287,6 +365,82 @@ func TestMultipleRead(t *testing.T) {
 		if err != v.readExtraErr {
 			t.Fatalf("[%d] extra read err: %v VS expected: %v\n", i, err, v.readExtraErr)
 		}
+	}
+
+}
+
+func TestStreaming(t *testing.T) {
+	// prepare the aead...
+	aead, err := xcha.NewX(key)
+	if err != nil {
+		panic(err)
+	}
+
+	//
+	for i, v := range readStreamTestVector {
+		inData := make([]byte, v.dataSize)
+
+		// read random data
+		_, err = io.ReadFull(rand.Reader, inData)
+		if err != nil {
+			t.Fatalf("[%d] ReadFull() rand error: %v\n", i, err)
+		}
+		t.Logf("[%d] in: %d bytes\n", i, len(inData))
+
+		// compute hash of the data
+		datahash := sha256.Sum256(inData)
+		t.Logf("[%d] in hash: %x\n", i, datahash)
+
+		// in data
+		inBuffer := bytes.NewBuffer(inData)
+
+		// will grow as necessary
+		outCryptedData := make([]byte, 0)
+		// encrypted data buffer
+		outCryptedBuffer := bytes.NewBuffer(outCryptedData)
+
+		swr, err := NewWriter(outCryptedBuffer, aead, v.blockSize)
+		if err != nil {
+			t.Fatalf("[%d] NewWriter() error: %v\n", i, err)
+		}
+
+		//copybuf := make([]byte, 32*1024)
+		//wn, err := io.CopyBuffer(swr, inBuffer, copybuf)
+		wn, err := copyBuffer(swr, inBuffer, nil)
+		if err != nil {
+			t.Fatalf("[%d] NewWriter() error: %v\n", i, err)
+		}
+
+		// close the writer
+		swr.Close()
+		t.Logf("[%d] ciphertext: %d bytes written\n", i, wn)
+
+		//outCryptedBuffer.Reset()
+		inCryptedBuffer := bytes.NewBuffer(outCryptedBuffer.Bytes())
+		t.Logf("[%d] ciphertext buffer: %d bytes written\n", i, inCryptedBuffer.Len())
+
+		// let's read and decrypt now..
+		crd, err := NewReader(inCryptedBuffer, aead, v.blockSize)
+		if err != nil {
+			t.Fatalf("[%d] NewReader() error: %v\n", i, err)
+		}
+
+		outPlainData := make([]byte, 0)
+		outPlainBuffer := bytes.NewBuffer(outPlainData)
+
+		//rc, err := io.Copy(outPlainBuffer, crd)
+		rc, err := copyBuffer(outPlainBuffer, crd, nil)
+		if err != nil {
+			t.Fatalf("[%d] io.Copy() error: %v\n", i, err)
+		}
+		t.Logf("[%d] io.Copy rc: %d\n", i, rc)
+
+		readhash := sha256.Sum256(outPlainBuffer.Bytes())
+		t.Logf("[%d] out hash: %x\n", i, readhash)
+		if bytes.Compare(datahash[:], readhash[:]) != 0 {
+			t.Fatalf("[%d] invalid data orig: %x VS read: %x\n", i, datahash, readhash)
+		}
+
 	}
 
 }
