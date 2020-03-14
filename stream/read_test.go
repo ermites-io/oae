@@ -171,6 +171,40 @@ var (
 			nil,
 		},
 	}
+
+	readTruncateTestVector = []struct {
+		blockSize int
+		writeSize int
+		readSize  int
+		readRc    int
+		readErr   error
+		complete  bool
+	}{
+		{
+			16,
+			16,
+			10,
+			10,
+			nil,
+			true,
+		},
+		{
+			16,
+			64,
+			10,
+			10,
+			nil,
+			false,
+		},
+		{
+			16,
+			64,
+			64,
+			64,
+			nil,
+			true,
+		},
+	}
 )
 
 // stolen from io.Copy except we do NOT want to  wrap/use WriteTo() or ReadFrom()
@@ -225,7 +259,7 @@ func copyBuffer(dst io.Writer, src io.Reader, buf []byte) (written int64, err er
 }
 
 // return the hash of the data, the buffer with the encrypted data
-func streambuffer(t *testing.T, datasize, blocksize int) (dh []byte, iobuffer *bytes.Buffer, err error) {
+func streambuffer(t *testing.T, datasize, blocksize int) (dh, seed []byte, iobuffer *bytes.Buffer, err error) {
 	data := make([]byte, datasize)
 
 	_, err = io.ReadFull(rand.Reader, data)
@@ -247,7 +281,13 @@ func streambuffer(t *testing.T, datasize, blocksize int) (dh []byte, iobuffer *b
 		return
 	}
 
-	swr, err := NewWriter(iobuffer, aead, blocksize)
+	// seed
+	seed = make([]byte, aead.NonceSize()-NonceOverHead)
+	if _, err = io.ReadFull(rand.Reader, seed); err != nil {
+		return
+	}
+
+	swr, err := NewWriter(iobuffer, aead, seed, blocksize)
 	if err != nil {
 		return
 	}
@@ -270,12 +310,13 @@ func TestSingleRead(t *testing.T) {
 	}
 
 	for i, v := range readTestVector {
-		h, iobuf, err := streambuffer(t, v.writeSize, v.blockSize)
+		t.Logf("[%d] vector write: %d bytes, read %d byte\n", i, v.writeSize, v.readSize)
+		h, seed, iobuf, err := streambuffer(t, v.writeSize, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] buffer create error: %v\n", i, err)
 		}
 
-		srd, err := NewReader(iobuf, aead, v.blockSize)
+		srd, err := NewReader(iobuf, aead, seed, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] reader create error: %v\n", i, err)
 		}
@@ -308,14 +349,14 @@ func TestMultipleRead(t *testing.T) {
 
 	for i, v := range readMultipleTestVector {
 		//t.Logf("testing vector: %d\n", i)
-		h, iobuf, err := streambuffer(t, v.writeSize, v.blockSize)
+		h, seed, iobuf, err := streambuffer(t, v.writeSize, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] buffer create error: %v\n", i, err)
 		}
 
 		//t.Logf("w: %x\n", iobuf.Bytes())
 
-		srd, err := NewReader(iobuf, aead, v.blockSize)
+		srd, err := NewReader(iobuf, aead, seed, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] reader create error: %v\n", i, err)
 		}
@@ -380,16 +421,21 @@ func TestStreaming(t *testing.T) {
 	for i, v := range readStreamTestVector {
 		inData := make([]byte, v.dataSize)
 
+		// seed
+		seed := make([]byte, aead.NonceSize()-NonceOverHead)
+		if _, err := io.ReadFull(rand.Reader, seed); err != nil {
+			return
+		}
+
 		// read random data
 		_, err = io.ReadFull(rand.Reader, inData)
 		if err != nil {
 			t.Fatalf("[%d] ReadFull() rand error: %v\n", i, err)
 		}
-		t.Logf("[%d] in: %d bytes\n", i, len(inData))
+		//t.Logf("[%d] in: %d bytes\n", i, len(inData))
 
 		// compute hash of the data
 		datahash := sha256.Sum256(inData)
-		t.Logf("[%d] in hash: %x\n", i, datahash)
 
 		// in data
 		inBuffer := bytes.NewBuffer(inData)
@@ -399,28 +445,28 @@ func TestStreaming(t *testing.T) {
 		// encrypted data buffer
 		outCryptedBuffer := bytes.NewBuffer(outCryptedData)
 
-		swr, err := NewWriter(outCryptedBuffer, aead, v.blockSize)
+		swr, err := NewWriter(outCryptedBuffer, aead, seed, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] NewWriter() error: %v\n", i, err)
 		}
 
 		//copybuf := make([]byte, 32*1024)
 		//wn, err := io.CopyBuffer(swr, inBuffer, copybuf)
-		wn, err := copyBuffer(swr, inBuffer, nil)
+		_, err = copyBuffer(swr, inBuffer, nil)
 		if err != nil {
 			t.Fatalf("[%d] NewWriter() error: %v\n", i, err)
 		}
 
 		// close the writer
 		swr.Close()
-		t.Logf("[%d] ciphertext: %d bytes written\n", i, wn)
 
 		//outCryptedBuffer.Reset()
 		inCryptedBuffer := bytes.NewBuffer(outCryptedBuffer.Bytes())
-		t.Logf("[%d] ciphertext buffer: %d bytes written\n", i, inCryptedBuffer.Len())
+		//t.Logf("[%d] ciphertext buffer: %d bytes written\n", i, inCryptedBuffer.Len())
+		//t.Logf("[%d] in: %d bytes - written: %d bytes\n", i, len(inData), inCryptedBuffer.Len())
 
 		// let's read and decrypt now..
-		crd, err := NewReader(inCryptedBuffer, aead, v.blockSize)
+		crd, err := NewReader(inCryptedBuffer, aead, seed, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] NewReader() error: %v\n", i, err)
 		}
@@ -433,14 +479,55 @@ func TestStreaming(t *testing.T) {
 		if err != nil {
 			t.Fatalf("[%d] io.Copy() error: %v\n", i, err)
 		}
-		t.Logf("[%d] io.Copy rc: %d\n", i, rc)
-
+		//t.Logf("[%d] io.Copy rc: %d\n", i, rc)
 		readhash := sha256.Sum256(outPlainBuffer.Bytes())
-		t.Logf("[%d] out hash: %x\n", i, readhash)
+
 		if bytes.Compare(datahash[:], readhash[:]) != 0 {
 			t.Fatalf("[%d] invalid data orig: %x VS read: %x\n", i, datahash, readhash)
 		}
 
+		t.Logf("[%d] in: %d bytes out: %d bytes complete: %v\n", i, len(inData), rc, crd.IsComplete())
+		t.Logf("[%d] in hash: %x\n", i, datahash)
+		t.Logf("[%d] out hash: %x\n", i, readhash)
+
 	}
 
+}
+
+func TestTruncateRead(t *testing.T) {
+	// prepare the aead...
+	aead, err := xcha.NewX(key)
+	if err != nil {
+		panic(err)
+	}
+
+	for i, v := range readTruncateTestVector {
+		h, seed, iobuf, err := streambuffer(t, v.writeSize, v.blockSize)
+		if err != nil {
+			t.Fatalf("[%d] buffer create error: %v\n", i, err)
+		}
+
+		srd, err := NewReader(iobuf, aead, seed, v.blockSize)
+		if err != nil {
+			t.Fatalf("[%d] reader create error: %v\n", i, err)
+		}
+
+		b1 := make([]byte, v.readSize)
+		rc, err := srd.Read(b1)
+		if v.readRc != rc {
+			t.Fatalf("[%d] read size error n: %d vs expected: %d\n", i, rc, v.readRc)
+		}
+		if v.readErr != err {
+			t.Fatalf("[%d] read size error: %v vs expected: %v\n", i, err, v.readErr)
+		}
+
+		readhash := sha256.Sum256(b1)
+		if v.readSize == v.writeSize && bytes.Compare(h, readhash[:]) != 0 {
+			t.Fatalf("[%d] read data wh: %x VS rh: %x\n", i, h, readhash[:])
+		}
+
+		if v.complete != srd.IsComplete() {
+			t.Fatalf("[%d] stream completeness: %v VS expected: %v\n", i, srd.IsComplete(), v.complete)
+		}
+	}
 }

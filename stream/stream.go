@@ -28,4 +28,11 @@ type STREAM struct {
 
 	buffered int
 	buf      *bytes.Buffer
+
+	// are we done..
+	endOfStream bool
+}
+
+func (s *STREAM) IsComplete() bool {
+	return s.endOfStream
 }

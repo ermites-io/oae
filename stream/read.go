@@ -3,9 +3,7 @@ package stream
 import (
 	"bytes"
 	"crypto/cipher"
-	"fmt"
 	"io"
-	"os"
 )
 
 //
@@ -19,13 +17,17 @@ import (
 //
 //
 //
-func NewReader(r io.Reader, a cipher.AEAD, blockSize int) (*STREAM, error) {
+func NewReader(r io.Reader, a cipher.AEAD, seed []byte, blockSize int) (*STREAM, error) {
 	buffer := make([]byte, 0, blockSize)
 
+	state := newState(seed)
+
 	s := STREAM{
-		aead: a,
-		r:    r,
-		buf:  bytes.NewBuffer(buffer),
+		aead:        a,
+		state:       state,
+		r:           r,
+		buf:         bytes.NewBuffer(buffer),
+		endOfStream: false,
 	}
 	return &s, nil
 }
@@ -34,6 +36,7 @@ func NewReader(r io.Reader, a cipher.AEAD, blockSize int) (*STREAM, error) {
 // if n < len(p) internally -> blocking call
 // if n == len(p) & EOF -> error io.EOF || nil
 
+/*
 func (s *STREAM) Seek(offset int64, whence int) (off int64, err error) {
 	blocksize := s.buf.Cap()
 
@@ -75,16 +78,18 @@ func (s *STREAM) Seek(offset int64, whence int) (off int64, err error) {
 			}
 		}
 
-		/* granularity is block size
-		if bm > 0 {
-			buf := make([]byte, bm)
-			n0, rerr := s.Read(buf)
-			if rerr != nil {
-				panic(err)
-			}
-			fmt.Fprintf(os.Stderr, "ReadAt Modulo(%d) n0: %d err: %v\n", bm, n0, err)
-		}
-		*/
+*/
+/* granularity is block size
+if bm > 0 {
+	buf := make([]byte, bm)
+	n0, rerr := s.Read(buf)
+	if rerr != nil {
+		panic(err)
+	}
+	fmt.Fprintf(os.Stderr, "ReadAt Modulo(%d) n0: %d err: %v\n", bm, n0, err)
+}
+*/
+/*
 	case io.SeekCurrent: // NOT SUPPORTED
 	case io.SeekEnd: // NOT SUPPORTED
 	}
@@ -93,6 +98,7 @@ func (s *STREAM) Seek(offset int64, whence int) (off int64, err error) {
 
 	return
 }
+*/
 
 func (s *STREAM) Read(p []byte) (n int, err error) {
 	blocksize := s.buf.Cap()
@@ -101,21 +107,23 @@ func (s *STREAM) Read(p []byte) (n int, err error) {
 		return 0, nil
 	}
 
-	// are we in the beginning?
-	// yes read the seed first and create the state from it.
-	if s.state == nil {
-		seed := make([]byte, s.aead.NonceSize()-4-1)
+	/*
+		// are we in the beginning?
+		// yes read the seed first and create the state from it.
+		if s.state == nil {
+			seed := make([]byte, s.aead.NonceSize()-4-1)
 
-		// read block0
-		_, err = io.ReadFull(s.r, seed)
-		//fmt.Printf("read header %d bytes\n", n)
-		if err != nil {
-			//fmt.Printf("read header %d (%v)\n", n, err)
-			return
+			// read block0
+			_, err = io.ReadFull(s.r, seed)
+			//fmt.Printf("read header %d bytes\n", n)
+			if err != nil {
+				//fmt.Printf("read header %d (%v)\n", n, err)
+				return
+			}
+			//fmt.Fprintf(os.Stderr, "read seed: %x\n", seed)
+			s.state = newState(seed)
 		}
-		//fmt.Fprintf(os.Stderr, "read seed: %x\n", seed)
-		s.state = newState(seed)
-	}
+	*/
 
 	//buf := make([]byte, s.buf.len()+s.aead.Overhead())
 	buf := make([]byte, blocksize+s.aead.Overhead())
@@ -144,11 +152,15 @@ func (s *STREAM) Read(p []byte) (n int, err error) {
 		n += n0
 	}
 
+	/*
+		if s.endOfStream {
+			return 0, io.EOF
+		}
+	*/
 	// if the dest buffer is larger than our internal buffer,
 	// let's just loop and fill as much.
 forloop:
 	for b := p[n:]; n < len(p); {
-		var nonce []byte
 
 		n1, rerr := io.ReadFull(s.r, buf)
 		//fmt.Fprintf(os.Stderr, "-- readfull() n: %d n1: %d rerr: %v\n", n, n1, rerr)
@@ -158,7 +170,7 @@ forloop:
 			break forloop
 		case io.ErrUnexpectedEOF:
 			// it is the last block (we use ReadFull())
-			nonce = s.state.next(true)
+			nonce := s.state.next(true)
 			pt, cerr := s.aead.Open(nil, nonce, buf[:n1], nil)
 			if cerr != nil {
 				// TRUNCATED BLOCK so we are not returning EOF or nil
@@ -181,13 +193,15 @@ forloop:
 			//fmt.Fprintf(os.Stderr, "unexEOF len(pt):%d VS n0: %d\n", len(pt), n0)
 			b = b[n0:]
 			n += n0
+			s.endOfStream = true
 			break forloop
 		case nil:
-			nonce = s.state.next(false)
+			nonce := s.state.next(false)
 			pt, cerr := s.aead.Open(nil, nonce, buf[:n1], nil)
 			if cerr != nil {
 				// may be it's the last block.
-				nonce[len(nonce)-1] = 0x01
+				//nonce[len(nonce)-1] = 0x01
+				nonce.last()
 				pt, cerr = s.aead.Open(nil, nonce, buf[:n1], nil)
 				if cerr != nil {
 					// the guess is it's the last block
@@ -198,6 +212,7 @@ forloop:
 					err = cerr
 					break forloop
 				}
+				s.endOfStream = true
 			}
 
 			n0 := copy(b, pt)

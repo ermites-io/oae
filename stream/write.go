@@ -3,7 +3,6 @@ package stream
 import (
 	"bytes"
 	"crypto/cipher"
-	"crypto/rand"
 	"io"
 )
 
@@ -18,8 +17,8 @@ import (
 //
 //
 //
-
-func NewWriter(w io.Writer, a cipher.AEAD, blockSize int) (*STREAM, error) {
+/*
+func OldNewWriter(w io.Writer, a cipher.AEAD, blockSize int) (*STREAM, error) {
 	buffer := make([]byte, 0, blockSize)
 	seed := make([]byte, a.NonceSize()-4-1)
 	if _, err := io.ReadFull(rand.Reader, seed); err != nil {
@@ -38,11 +37,37 @@ func NewWriter(w io.Writer, a cipher.AEAD, blockSize int) (*STREAM, error) {
 
 	return &s, nil
 }
+*/
 
+func NewWriter(w io.Writer, a cipher.AEAD, seed []byte, blockSize int) (*STREAM, error) {
+	buffer := make([]byte, 0, blockSize)
+	/*
+		seed := make([]byte, a.NonceSize()-4-1)
+		if _, err := io.ReadFull(rand.Reader, seed); err != nil {
+			return nil, err
+		}
+		//fmt.Fprintf(os.Stderr, "seed: %x\n", seed)
+	*/
+
+	// setup the seed for STREAM nonce generation
+	state := newState(seed)
+
+	s := STREAM{
+		aead:  a,
+		state: state,
+		w:     w,
+		buf:   bytes.NewBuffer(buffer),
+	}
+
+	return &s, nil
+}
+
+/*
 func (s *STREAM) writeSeedBlock() (err error) {
 	_, err = s.w.Write(s.state.seed)
 	return
 }
+*/
 
 // used by io.Copy()
 /*
@@ -87,16 +112,18 @@ func (s *STREAM) Write(b []byte) (n int, err error) {
 
 	// this is where the seed is transmitted
 	// in the beginning of the block
-	if !s.state.started() {
-		//if s.state.Init() {
-		//fmt.Fprintf(os.Stderr, "started!\n")
-		werr := s.writeSeedBlock()
-		if werr != nil {
-			err = werr
-			return
+	/*
+		if !s.state.started() {
+			//if s.state.Init() {
+			//fmt.Fprintf(os.Stderr, "started!\n")
+			werr := s.writeSeedBlock()
+			if werr != nil {
+				err = werr
+				return
+			}
+			s.state.start()
 		}
-		s.state.start()
-	}
+	*/
 
 	for wn, avail := 0, bufsize-s.buffered; unread > 0; avail = bufsize - s.buffered {
 		// when % bufsize, we do NOT flush, Close() should flush

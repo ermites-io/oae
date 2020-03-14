@@ -30,6 +30,8 @@ import (
 //
 //
 
+type nonce []byte
+
 // the new stream state
 type state struct {
 	init  bool
@@ -45,6 +47,22 @@ func newState(seed []byte) *state {
 	}
 }
 
+//
+//
+// NONCE TYPE Methods
+//
+//
+
+func (n nonce) last() {
+	n[len(n)-1] = EOS
+}
+
+//
+//
+// STATE TYPE Methods
+//
+//
+
 func (s *state) set(block int) {
 	s.block = uint32(block)
 }
@@ -52,24 +70,11 @@ func (s *state) set(block int) {
 // better naming later.
 //func (s *state) init() bool {
 func (s *state) start() {
-	/*
-		if s.block == 0 {
-			return true
-		}
-		return false
-	*/
 	s.init = true
 }
 
 func (s *state) started() bool {
 	return s.init
-}
-
-func (s *state) Init() bool {
-	if s.block == 0 {
-		return true
-	}
-	return false
 }
 
 // compute the  next nonce
@@ -78,9 +83,7 @@ func (s *state) Init() bool {
 // block : 4 bytes
 // tag : 1 byte
 // if last is true then the tag is 0x01 and mark the end of the stream
-func (s *state) next(last bool) (nonce []byte) {
-	//var nonce []byte
-
+func (s *state) next(last bool) (n nonce) {
 	// tag
 	t := make([]byte, 1)
 
@@ -89,13 +92,20 @@ func (s *state) next(last bool) (nonce []byte) {
 	binary.BigEndian.PutUint32(b, s.block)
 
 	// prepare tag
-	if last {
-		t[0] = 0x01
-	}
+	/*
+		if last {
+			t[0] = 0x01
+		}
+	*/
 
-	nonce = append(nonce, s.seed...)
-	nonce = append(nonce, b...)
-	nonce = append(nonce, t...)
+	n = append(n, s.seed...)
+	n = append(n, b...)
+	n = append(n, t...)
+
+	if last {
+		n.last()
+		//fmt.Fprintf(os.Stderr, "last block n: %x\n", n)
+	}
 
 	// increment
 	s.block++
