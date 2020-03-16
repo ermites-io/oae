@@ -48,9 +48,13 @@ func NewWriter(w io.Writer, a cipher.AEAD, seed []byte, blockSize int) (*STREAM,
 		}
 		//fmt.Fprintf(os.Stderr, "seed: %x\n", seed)
 	*/
+	seedlen := a.NonceSize() - NonceOverhead
+	if len(seed) < seedlen {
+		return nil, ErrStreamInit
+	}
 
 	// setup the seed for STREAM nonce generation
-	state := newState(seed)
+	state := newState(seed[:seedlen])
 
 	s := STREAM{
 		aead:  a,
