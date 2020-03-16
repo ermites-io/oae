@@ -282,7 +282,7 @@ func streambuffer(t *testing.T, datasize, blocksize int) (dh, seed []byte, iobuf
 	}
 
 	// seed
-	seed = make([]byte, aead.NonceSize()-NonceOverHead)
+	seed = make([]byte, aead.NonceSize()-NonceOverhead)
 	if _, err = io.ReadFull(rand.Reader, seed); err != nil {
 		return
 	}
@@ -422,7 +422,7 @@ func TestStreaming(t *testing.T) {
 		inData := make([]byte, v.dataSize)
 
 		// seed
-		seed := make([]byte, aead.NonceSize()-NonceOverHead)
+		seed := make([]byte, aead.NonceSize()-NonceOverhead)
 		if _, err := io.ReadFull(rand.Reader, seed); err != nil {
 			return
 		}

@@ -20,11 +20,17 @@ import (
 func NewReader(r io.Reader, a cipher.AEAD, seed []byte, blockSize int) (*STREAM, error) {
 	buffer := make([]byte, 0, blockSize)
 
-	state := newState(seed)
+	seedlen := a.NonceSize() - NonceOverhead
+	if len(seed) < seedlen {
+		return nil, ErrStreamInit
+	}
+
+	// seed size depends on aead nonce size.
+	//state := newState(seed[:seedlen])
 
 	s := STREAM{
 		aead:        a,
-		state:       state,
+		state:       newState(seed[:seedlen]),
 		r:           r,
 		buf:         bytes.NewBuffer(buffer),
 		endOfStream: false,
