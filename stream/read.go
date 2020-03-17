@@ -3,6 +3,7 @@ package stream
 import (
 	"bytes"
 	"crypto/cipher"
+	"fmt"
 	"io"
 )
 
@@ -181,7 +182,8 @@ forloop:
 			if cerr != nil {
 				// TRUNCATED BLOCK so we are not returning EOF or nil
 				// it's TRUNCATED it's supposed to be the last block or we miss data.
-				err = cerr
+				err = fmt.Errorf("block: %d %v", s.state.block-1, cerr)
+				//err = cerr
 				break forloop
 			}
 			n0 := copy(b, pt)
@@ -215,7 +217,8 @@ forloop:
 					// if not and we should just return an ErrUnexpectedEOF
 					//panic(err)
 					//err = io.ErrUnexpectedEOF
-					err = cerr
+					err = fmt.Errorf("block: %d %v", s.state.block-1, cerr)
+					//err = cerr
 					break forloop
 				}
 				s.endOfStream = true
