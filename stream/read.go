@@ -43,69 +43,13 @@ func NewReader(r io.Reader, a cipher.AEAD, seed []byte, blockSize int) (*STREAM,
 // if n < len(p) internally -> blocking call
 // if n == len(p) & EOF -> error io.EOF || nil
 
-/*
-func (s *STREAM) Seek(offset int64, whence int) (off int64, err error) {
-	blocksize := s.buf.Cap()
-
-	// are we in the beginning?
-	// yes read the seed first and create the state from it.
-	if s.state == nil {
-		seed := make([]byte, s.aead.NonceSize()-4-1)
-
-		// read block0
-		_, err = io.ReadFull(s.r, seed)
-		//fmt.Printf("read header %d bytes\n", n)
-		if err != nil {
-			//fmt.Printf("read header %d (%v)\n", n, err)
-			return
-		}
-		s.state = newState(seed)
-	}
-
-	// need to calculate how many blocks we need to read..
-	// [ seed ] [ block 0 ] [ block 1 ] [ block 2 ]... [ block n ]
-	// 0
-	switch whence {
-	case io.SeekStart:
-		// progress the state up to the offset
-		//which block should I reading
-		bn := offset / int64(blocksize)
-		bm := offset % int64(blocksize)
-
-		fmt.Fprintf(os.Stderr, "BNum: %v BMod: %v\n", bn, bm)
-		if bn > 0 {
-			buf := make([]byte, blocksize)
-			// read each block until we reach our limit
-			for i := 0; i < int(bn); i++ {
-				n0, rerr := s.Read(buf)
-				if rerr != nil {
-					panic(err)
-				}
-				fmt.Fprintf(os.Stderr, "ReadAt Loop(%d) n0: %d err: %v\n", i, n0, err)
-			}
-		}
-
-*/
-/* granularity is block size
-if bm > 0 {
-	buf := make([]byte, bm)
-	n0, rerr := s.Read(buf)
-	if rerr != nil {
-		panic(err)
-	}
-	fmt.Fprintf(os.Stderr, "ReadAt Modulo(%d) n0: %d err: %v\n", bm, n0, err)
+func (s *STREAM) SeekBlock(block int) {
+	s.state.set(block)
 }
-*/
-/*
-	case io.SeekCurrent: // NOT SUPPORTED
-	case io.SeekEnd: // NOT SUPPORTED
-	}
 
-	//s.state.set(bn)
-
-	return
+func (s *STREAM) Block() uint32 {
+	return s.state.block
 }
-*/
 
 func (s *STREAM) Read(p []byte) (n int, err error) {
 	blocksize := s.buf.Cap()
