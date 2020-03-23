@@ -17,37 +17,9 @@ import (
 //
 //
 //
-/*
-func OldNewWriter(w io.Writer, a cipher.AEAD, blockSize int) (*STREAM, error) {
+func NewWriter(w io.Writer, a cipher.AEAD, seed, ad []byte, blockSize int) (*STREAM, error) {
 	buffer := make([]byte, 0, blockSize)
-	seed := make([]byte, a.NonceSize()-4-1)
-	if _, err := io.ReadFull(rand.Reader, seed); err != nil {
-		return nil, err
-	}
-	//fmt.Fprintf(os.Stderr, "seed: %x\n", seed)
 
-	state := newState(seed)
-
-	s := STREAM{
-		aead:  a,
-		state: state,
-		w:     w,
-		buf:   bytes.NewBuffer(buffer),
-	}
-
-	return &s, nil
-}
-*/
-
-func NewWriter(w io.Writer, a cipher.AEAD, seed []byte, blockSize int) (*STREAM, error) {
-	buffer := make([]byte, 0, blockSize)
-	/*
-		seed := make([]byte, a.NonceSize()-4-1)
-		if _, err := io.ReadFull(rand.Reader, seed); err != nil {
-			return nil, err
-		}
-		//fmt.Fprintf(os.Stderr, "seed: %x\n", seed)
-	*/
 	seedlen := a.NonceSize() - NonceOverhead
 	if len(seed) < seedlen {
 		return nil, ErrStreamInit
@@ -58,6 +30,7 @@ func NewWriter(w io.Writer, a cipher.AEAD, seed []byte, blockSize int) (*STREAM,
 
 	s := STREAM{
 		aead:  a,
+		ad:    ad,
 		state: state,
 		w:     w,
 		buf:   bytes.NewBuffer(buffer),
@@ -67,14 +40,7 @@ func NewWriter(w io.Writer, a cipher.AEAD, seed []byte, blockSize int) (*STREAM,
 }
 
 /*
-func (s *STREAM) writeSeedBlock() (err error) {
-	_, err = s.w.Write(s.state.seed)
-	return
-}
-*/
-
 // used by io.Copy()
-/*
 func (s *STREAM) _ReadFrom(r io.Reader) (wn int64, err error) {
 	buf := make([]byte, 0, s.buf.Cap())
 	for {
@@ -112,30 +78,17 @@ func (s *STREAM) _ReadFrom(r io.Reader) (wn int64, err error) {
 func (s *STREAM) Write(b []byte) (n int, err error) {
 	bufsize := s.buf.Cap()
 	unread := len(b)
-	//fmt.Fprintf(os.Stderr, "Write(%d) bufsize: %d\n", len(b), bufsize)
-
-	// this is where the seed is transmitted
-	// in the beginning of the block
-	/*
-		if !s.state.started() {
-			//if s.state.Init() {
-			//fmt.Fprintf(os.Stderr, "started!\n")
-			werr := s.writeSeedBlock()
-			if werr != nil {
-				err = werr
-				return
-			}
-			s.state.start()
-		}
-	*/
 
 	for wn, avail := 0, bufsize-s.buffered; unread > 0; avail = bufsize - s.buffered {
 		// when % bufsize, we do NOT flush, Close() should flush
 		// otherwise we cannot tag the last block as last block..
 		if s.buffered == bufsize {
 			// flush: Seal & Write.
+			// although we could use AD on only the first block
+			// to avoid code complexity, we use ad on each block of the same stream.
 			nonce := s.state.next(false)
-			ct := s.aead.Seal(nil, nonce, s.buf.Bytes(), nil)
+			ct := s.aead.Seal(nil, nonce, s.buf.Bytes(), s.ad)
+			//}
 			_, werr := s.w.Write(ct)
 			if werr != nil {
 				err = werr
@@ -165,7 +118,7 @@ func (s *STREAM) Close() error {
 	// Seal and close
 	if s.buf.Len() > 0 {
 		nonce := s.state.next(last)
-		ct := s.aead.Seal(nil, nonce, s.buf.Bytes(), nil)
+		ct := s.aead.Seal(nil, nonce, s.buf.Bytes(), s.ad)
 		_, err := s.w.Write(ct)
 		if err != nil {
 			return err

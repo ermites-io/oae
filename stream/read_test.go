@@ -33,6 +33,8 @@ var (
 		0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25,
 	}
 
+	streamId = []byte("mystreamid")
+
 	blockSize = 16
 
 	readTestVector = []struct {
@@ -287,7 +289,7 @@ func streambuffer(t *testing.T, datasize, blocksize int) (dh, seed []byte, iobuf
 		return
 	}
 
-	swr, err := NewWriter(iobuffer, aead, seed, blocksize)
+	swr, err := NewWriter(iobuffer, aead, seed, streamId, blocksize)
 	if err != nil {
 		return
 	}
@@ -316,7 +318,7 @@ func TestSingleRead(t *testing.T) {
 			t.Fatalf("[%d] buffer create error: %v\n", i, err)
 		}
 
-		srd, err := NewReader(iobuf, aead, seed, v.blockSize)
+		srd, err := NewReader(iobuf, aead, seed, streamId, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] reader create error: %v\n", i, err)
 		}
@@ -356,7 +358,7 @@ func TestMultipleRead(t *testing.T) {
 
 		//t.Logf("w: %x\n", iobuf.Bytes())
 
-		srd, err := NewReader(iobuf, aead, seed, v.blockSize)
+		srd, err := NewReader(iobuf, aead, seed, streamId, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] reader create error: %v\n", i, err)
 		}
@@ -445,7 +447,7 @@ func TestStreaming(t *testing.T) {
 		// encrypted data buffer
 		outCryptedBuffer := bytes.NewBuffer(outCryptedData)
 
-		swr, err := NewWriter(outCryptedBuffer, aead, seed, v.blockSize)
+		swr, err := NewWriter(outCryptedBuffer, aead, seed, streamId, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] NewWriter() error: %v\n", i, err)
 		}
@@ -466,7 +468,7 @@ func TestStreaming(t *testing.T) {
 		//t.Logf("[%d] in: %d bytes - written: %d bytes\n", i, len(inData), inCryptedBuffer.Len())
 
 		// let's read and decrypt now..
-		crd, err := NewReader(inCryptedBuffer, aead, seed, v.blockSize)
+		crd, err := NewReader(inCryptedBuffer, aead, seed, streamId, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] NewReader() error: %v\n", i, err)
 		}
@@ -507,7 +509,7 @@ func TestTruncateRead(t *testing.T) {
 			t.Fatalf("[%d] buffer create error: %v\n", i, err)
 		}
 
-		srd, err := NewReader(iobuf, aead, seed, v.blockSize)
+		srd, err := NewReader(iobuf, aead, seed, streamId, v.blockSize)
 		if err != nil {
 			t.Fatalf("[%d] reader create error: %v\n", i, err)
 		}

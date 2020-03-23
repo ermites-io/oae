@@ -20,6 +20,7 @@ import (
 
 type STREAM struct {
 	aead cipher.AEAD // AEAD
+	ad   []byte      // AEAD additionnal data, like stream id for example.
 
 	state *state // the state of the stream
 

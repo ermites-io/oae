@@ -18,7 +18,7 @@ import (
 //
 //
 //
-func NewReader(r io.Reader, a cipher.AEAD, seed []byte, blockSize int) (*STREAM, error) {
+func NewReader(r io.Reader, a cipher.AEAD, seed, ad []byte, blockSize int) (*STREAM, error) {
 	buffer := make([]byte, 0, blockSize)
 
 	seedlen := a.NonceSize() - NonceOverhead
@@ -27,10 +27,9 @@ func NewReader(r io.Reader, a cipher.AEAD, seed []byte, blockSize int) (*STREAM,
 	}
 
 	// seed size depends on aead nonce size.
-	//state := newState(seed[:seedlen])
-
 	s := STREAM{
 		aead:        a,
+		ad:          ad,
 		state:       newState(seed[:seedlen]),
 		r:           r,
 		buf:         bytes.NewBuffer(buffer),
@@ -57,24 +56,6 @@ func (s *STREAM) Read(p []byte) (n int, err error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-
-	/*
-		// are we in the beginning?
-		// yes read the seed first and create the state from it.
-		if s.state == nil {
-			seed := make([]byte, s.aead.NonceSize()-4-1)
-
-			// read block0
-			_, err = io.ReadFull(s.r, seed)
-			//fmt.Printf("read header %d bytes\n", n)
-			if err != nil {
-				//fmt.Printf("read header %d (%v)\n", n, err)
-				return
-			}
-			//fmt.Fprintf(os.Stderr, "read seed: %x\n", seed)
-			s.state = newState(seed)
-		}
-	*/
 
 	//buf := make([]byte, s.buf.len()+s.aead.Overhead())
 	buf := make([]byte, blocksize+s.aead.Overhead())
@@ -103,11 +84,6 @@ func (s *STREAM) Read(p []byte) (n int, err error) {
 		n += n0
 	}
 
-	/*
-		if s.endOfStream {
-			return 0, io.EOF
-		}
-	*/
 	// if the dest buffer is larger than our internal buffer,
 	// let's just loop and fill as much.
 forloop:
@@ -122,7 +98,7 @@ forloop:
 		case io.ErrUnexpectedEOF:
 			// it is the last block (we use ReadFull())
 			nonce := s.state.next(true)
-			pt, cerr := s.aead.Open(nil, nonce, buf[:n1], nil)
+			pt, cerr := s.aead.Open(nil, nonce, buf[:n1], s.ad)
 			if cerr != nil {
 				// TRUNCATED BLOCK so we are not returning EOF or nil
 				// it's TRUNCATED it's supposed to be the last block or we miss data.
@@ -149,20 +125,18 @@ forloop:
 			break forloop
 		case nil:
 			nonce := s.state.next(false)
-			pt, cerr := s.aead.Open(nil, nonce, buf[:n1], nil)
+			pt, cerr := s.aead.Open(nil, nonce, buf[:n1], s.ad)
 			if cerr != nil {
 				// may be it's the last block.
 				//nonce[len(nonce)-1] = 0x01
 				nonce.last()
-				pt, cerr = s.aead.Open(nil, nonce, buf[:n1], nil)
+				pt, cerr = s.aead.Open(nil, nonce, buf[:n1], s.ad)
 				if cerr != nil {
 					// the guess is it's the last block
 					// since we're in % blocksize
 					// if not and we should just return an ErrUnexpectedEOF
 					//panic(err)
-					//err = io.ErrUnexpectedEOF
 					err = fmt.Errorf("block: %d %v", s.state.block-1, cerr)
-					//err = cerr
 					break forloop
 				}
 				s.endOfStream = true
@@ -172,10 +146,9 @@ forloop:
 			if n0 < len(pt) {
 				// buffer the remaining that has already been decrypted..
 				_, werr := s.buf.Write(pt[n0:])
-				//fmt.Fprintf(os.Stderr, "BUFFER CN: %d\n", cn)
 				if werr != nil {
-					//panic(err) // TODO better handling..
-					err = werr
+					err = fmt.Errorf("block: %d %v", s.state.block-1, werr)
+					//err = werr
 					break forloop
 				}
 			}

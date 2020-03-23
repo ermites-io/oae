@@ -92,19 +92,12 @@ func (s *state) next(last bool) (n nonce) {
 	binary.BigEndian.PutUint32(b, s.block)
 
 	// prepare tag
-	/*
-		if last {
-			t[0] = 0x01
-		}
-	*/
-
 	n = append(n, s.seed...)
 	n = append(n, b...)
 	n = append(n, t...)
 
 	if last {
 		n.last()
-		//fmt.Fprintf(os.Stderr, "last block n: %x\n", n)
 	}
 
 	// increment
