@@ -24,7 +24,7 @@ This is WORK IN PROGRESS...  reliable code should come shortly as we need it.
 
 The API is still being worked, especially with AD.
 
-stream is partly in, chain is not commited in yet.
+STREAM is in, CHAIN is starting.
 
 
 ```
@@ -36,11 +36,9 @@ import (
 func main() {
 ..
 	// STREAM construction
-	stw, err := stream.NewWriter()
-	str, err := stream.NewReader()
+	stw, err := stream.NewWriter(w, aead, nonce, ad, 32768) // you get an io.Writer
+	str, err := stream.NewReader(r, aead, nonce, ad, 32768) // you get an io.Reader
 
 	// CHAIN construction
-	chw, err := chain.NewWriter()
-	chr, err := chain.NewReader()
 ```
 
