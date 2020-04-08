@@ -1,9 +1,16 @@
 package chain
 
-import "io"
+import (
+	"bytes"
+	"crypto/cipher"
+	"io"
+)
 
 type CHAIN struct {
-	s *chainState
+	state *state
+	aead  cipher.AEAD
+	ad    []byte
+	buf   *bytes.Buffer
 
 	// next writer layer
 	w io.Writer
