@@ -26,6 +26,10 @@ func NewReader(r io.Reader, a cipher.AEAD, seed, ad []byte, blockSize int) (*STR
 		return nil, ErrStreamInit
 	}
 
+	if blockSize == 0 {
+		blockSize = DefaultBlockSize
+	}
+
 	// seed size depends on aead nonce size.
 	s := STREAM{
 		aead:        a,
@@ -33,6 +37,7 @@ func NewReader(r io.Reader, a cipher.AEAD, seed, ad []byte, blockSize int) (*STR
 		state:       newState(seed[:seedlen]),
 		r:           r,
 		buf:         bytes.NewBuffer(buffer),
+		blocksize:   blockSize,
 		endOfStream: false,
 	}
 	return &s, nil
@@ -49,6 +54,7 @@ func (s *STREAM) SeekBlock(block int) {
 func (s *STREAM) Block() uint32 {
 	return s.state.block
 }
+
 
 func (s *STREAM) Read(p []byte) (n int, err error) {
 	blocksize := s.buf.Cap()

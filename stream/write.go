@@ -28,12 +28,17 @@ func NewWriter(w io.Writer, a cipher.AEAD, seed, ad []byte, blockSize int) (*STR
 	// setup the seed for STREAM nonce generation
 	state := newState(seed[:seedlen])
 
+	if blockSize == 0 {
+		blockSize = DefaultBlockSize
+	}
+
 	s := STREAM{
 		aead:  a,
 		ad:    ad,
 		state: state,
 		w:     w,
 		buf:   bytes.NewBuffer(buffer),
+		blocksize: blockSize,
 	}
 
 	return &s, nil

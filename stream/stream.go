@@ -30,6 +30,8 @@ type STREAM struct {
 	buffered int
 	buf      *bytes.Buffer
 
+	blocksize int
+
 	// are we done..
 	endOfStream bool
 }
@@ -37,3 +39,22 @@ type STREAM struct {
 func (s *STREAM) IsComplete() bool {
 	return s.endOfStream
 }
+
+func (s *STREAM) BlockSize() int {
+	return s.blocksize
+}
+
+
+// try to predict the output size
+func (s *STREAM) StreamSize(len int) int {
+	numBlocks := len / s.blocksize
+	numBlocksRemain := len % s.blocksize
+
+	total := numBlocks * s.aead.Overhead()
+	if numBlocksRemain != 0 {
+		total += s.aead.Overhead()
+	}
+
+	return total;
+}
+
