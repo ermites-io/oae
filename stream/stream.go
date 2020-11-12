@@ -55,6 +55,6 @@ func (s *STREAM) StreamSize(len int) int {
 		total += s.aead.Overhead()
 	}
 
-	return total;
+	return total+len;
 }
 
