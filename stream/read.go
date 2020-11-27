@@ -55,7 +55,6 @@ func (s *STREAM) Block() uint32 {
 	return s.state.block
 }
 
-
 func (s *STREAM) Read(p []byte) (n int, err error) {
 	blocksize := s.buf.Cap()
 
@@ -88,8 +87,14 @@ func (s *STREAM) Read(p []byte) (n int, err error) {
 			return
 		}
 		n += n0
+		if s.endOfStream {
+			return
+		}
 	}
 
+	if s.endOfStream {
+		return 0, io.EOF
+	}
 	// if the dest buffer is larger than our internal buffer,
 	// let's just loop and fill as much.
 forloop:
